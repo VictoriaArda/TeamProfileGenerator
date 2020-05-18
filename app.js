@@ -1,150 +1,231 @@
-const inquirer = require("inquirer");
-const jest = require("jest");
-const Engineer = require("./lib/engineer.js");
-const Intern = require("./lib/intern.js");
-const Manager = require("./lib/manager.js");
-var uniqueId = 0;
-var teamArray = [];
+const fs = require('fs');
+const http = require('http');
+const inquirer = require('inquirer');
+const Manager = require('./lib/Manager');
+const Engineer = require('./lib/Engineer');
+const Intern = require('./lib/Intern');
+const ManagerProfile = require('./templates/ManagerProfile');
+const EngineerProfile = require('./templates/EngineerProfile');
+const InternProfile = require('./templates/InternProfile');
+const TeamRoster = require('./templates/TeamRoster');
 
-// will need to have separate inquirer prompts depending on role etc. 
-function promptUser(answers) {
-    return inquirer.prompt([{
-            type: "list",
-            name: "role",
-            message: "what is your role?",
-            choices: ["Engineer", "Intern", "Manager"]
-        }, ]).then(function(res) {
-            // should use switch case instead of if/else starting here
-            console.log(res)
-            if (res.role === "Engineer") {
-                inquirer.prompt([{
-                        name: "name",
-                        message: "What is your name?",
-                        type: "input"
-                    },
-                    {
-                        name: "github",
-                        type: "input",
-                        message: "What is your github Username?"
-                    },
-                    {
-                        name: "email",
-                        type: "input",
-                        message: "What is your email?"
-                    }
-                ]).then(function(engineerRes) {
-                    var newEngineer = new Engineer(engineerRes.name, engineerRes.email, uniqueId, engineerRes.github);
-                    uniqueId = uniqueId + 1; // could be "uniqueId++"
-                    console.log(newEngineer);
-                    // run promptUser (called recursion) so that you can add multiple Engineers and id changes incrementally
-                    teamArray.push(newEngineer);
-                    addUser();
+class App {
+    constructor() {
+        this.db = {
+            manager: null,
+            engineers: [], // Array of engineer object instances,
+            interns: [], // Also array of intern object intances
+        }
+    }
 
-                });
+    async getEmployeeInfo() {
 
-            } else if (res.role === "Intern") {
-                inquirer.prompt([{
-                        name: "name",
-                        message: "What is your name?",
-                        type: "input"
-                    },
-                    {
-                        name: "email",
-                        type: "input",
-                        message: "What is your email?"
-                    },
-                    {
-                        name: "school",
-                        type: "input",
-                        message: "Where did you graduate from college?"
-                    }
-                ]).then(function(internRes) {
-                    var newIntern = new Intern(internRes.name, internRes.email, uniqueId, internRes.school);
-                    uniqueId = uniqueId + 1; // could be "uniqueId++"
-                    console.log(newIntern)
-                    teamArray.push(newIntern);
-                    addUser();
-                });
-            } else if (res.role === "Manager") {
-                inquirer.prompt([{
-                        name: "name",
-                        message: "What is your name?",
-                        type: "input"
-                    },
-                    {
-                        name: "email",
-                        type: "input",
-                        message: "What is your email?"
-                    },
-                    {
-                        name: "office",
-                        type: "input",
-                        message: "What is your office number?"
-                    }
-                ]).then(function(managerRes) {
-                    var newManager = new Manager(managerRes.name, managerRes.email, uniqueId, managerRes.office);
-                    uniqueId = uniqueId + 1; // could be "uniqueId++"
-                    console.log(newManager);
-                    teamArray.push(newManager);
-                    addUser();
-                });
-            };
-            // should use switch case instead of if/else up until this point
+        console.log(`\nPlease enter employee information:\n`);
 
-        })
-        .catch(function(err) {
-            console.log(err);
+        let employeeInfo =
+            await inquirer
+            .prompt([{
+                    type: "input",
+                    message: "ID: ",
+                    name: "id"
+                },
+                {
+                    type: "input",
+                    message: "Name: ",
+                    name: "name"
+                },
+                {
+                    type: "input",
+                    message: "Email: ",
+                    name: "email"
+                },
+                {
+                    type: "input",
+                    message: "Title: ",
+                    name: "title"
+                }
+            ]);
+
+        switch (employeeInfo.title.toLowerCase()) {
+            case 'manager':
+                employeeInfo = await this.getOfficeNumber(employeeInfo);
+                break;
+            case 'engineer':
+                employeeInfo = await this.getGithubHandle(employeeInfo);
+                break;
+            case 'intern':
+                employeeInfo = await this.getSchoolInfo(employeeInfo);
+                break;
+            default:
+                break;
+
+        }
+
+        return employeeInfo;
+    }
+
+    async getOfficeNumber(employeeInfo) {
+        const managerInfo =
+            await inquirer
+            .prompt([{
+                type: "input",
+                message: "Office Number: ",
+                name: "officeNumber"
+            }])
+
+        employeeInfo.officeNumber = await managerInfo.officeNumber;
+
+        return employeeInfo;
+    }
+
+    async getGithubHandle(employeeInfo) {
+        let engineerInfo =
+            await inquirer
+            .prompt([{
+                type: "input",
+                message: "GitHub handle: ",
+                name: "github"
+            }]);
+
+        employeeInfo.github = await engineerInfo.github;
+
+        return employeeInfo;
+    }
+
+    async getSchoolInfo(employeeInfo) {
+        let internInfo =
+            await inquirer
+            .prompt([{
+                type: "input",
+                message: "School: ",
+                name: "school"
+            }]);
+
+        employeeInfo.school = internInfo.school;
+
+        return employeeInfo;
+    }
+
+    createEmployee(employeeInfo) {
+        let employee;
+        const { id, name, email } = employeeInfo;
+        switch (employeeInfo.title.toLowerCase()) {
+            case 'manager':
+                const manager = new Manager(name, id, email, employeeInfo.officeNumber);
+                employee = manager;
+                break;
+            case 'engineer':
+                const engineer = new Engineer(name, id, email, employeeInfo.github);
+                employee = engineer;
+                break;
+            case 'intern':
+                const intern = new Intern(name, id, email, employeeInfo.school);
+                employee = intern;
+                break;
+            default:
+                break;
+        }
+
+        return employee;
+    }
+
+    saveEmployeeToDb(employee) {
+        switch (employee.getRole().toLowerCase()) {
+            case 'manager':
+                this.db.manager = employee;
+                break;
+            case 'engineer':
+                this.db.engineers.push(employee);
+                break;
+            case 'intern':
+                this.db.interns.push(employee);
+                break;
+            default:
+                break;
+        }
+    }
+
+    createTeamRoster() {
+
+        let managerProfile = '';
+        let engineers = '';
+        let interns = '';
+
+        if (this.db.manager) {
+            managerProfile = new ManagerProfile(this.db.manager);
+            managerProfile = managerProfile.createProfile();
+        }
+
+        if (this.db.engineers) {
+            for (const engineer of this.db.engineers) {
+                let engineerProfile = new EngineerProfile(engineer);
+                engineerProfile = engineerProfile.createProfile();
+
+                engineers += engineerProfile;
+            }
+        }
+
+        if (this.db.interns) {
+            for (const intern of this.db.interns) {
+                let internProfile = new InternProfile(intern);
+                internProfile = internProfile.createProfile();
+
+                engineers += internProfile;
+            }
+        }
+
+        const team = managerProfile + engineers + interns;
+
+        let teamRoster = new TeamRoster(team);
+        teamRoster = teamRoster.createTeamRoster();
+
+        return teamRoster;
+    }
+
+    createServer(teamRoster) {
+
+        fs.writeFile('./public/team.html', teamRoster, function(err) {
+            if (err) throw err;
+            console.log('Saved!');
         });
 
-};
-// will need to loop through teamArray and check each item and check and see if it is a mananger, intern or engineer
-// will need to check if it is a "manager, intern or engineer"
-// should use switch case here
 
-// create template in the HTML file and put in keywords as placeholders and then replace files
-// could also go through and creating html and writing it to a file
-function generateHTML() {
-    // put html here
+        http.createServer(function(req, res) {
+            fs.readFile('./public/team.html', function(err, data) {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.write(data);
+                res.end();
+            });
 
-    console.log(teamArray)
+        }).listen(5151);
+    }
 
-    function renderManager() {
+    async init() {
 
-    };
+        let input = '';
 
-    function renderIntern() {
+        do {
 
-    };
+            const employee = this.createEmployee(await this.getEmployeeInfo());
 
-    function renderEngineer() {
+            this.saveEmployeeToDb(employee);
 
-    };
+            input =
+                await inquirer
+                .prompt([{
+                    type: "input",
+                    message: "Type 'yes' if you wish to exit",
+                    name: "exit"
+                }]);
 
-};
+        } while (!input.exit);
 
-function addUser() {
-    inquirer.prompt([{
-        name: "continue",
-        message: "Do you want to add another team member?",
-        type: "confirm"
-    }]).then(function(confirmRes) {
-        confirmRes.continue ? promptUser() : generateHTML()
-    })
-};
-promptUser();
+        const teamRoster = this.createTeamRoster();
 
-// var engineer = new Engineer("christian", "engineer@email.com", "developer", "githubUsername");
-// console.log(engineer.getName());
+        this.createServer(teamRoster);
+    }
+}
 
-// var intern = new Intern("Daniel", "intern@email.com,", "intern", "Harvard");
-// console.log(intern);
+const app = new App();
 
-// var manager = new Manager("Osei", "manager@email.com,", "manager", "123");
-// console.log(manager.getEmail());
-
-
-
-// will have a function for each employee type ex: renderIntern(),renderManager()
-// then you would add them all together and create a single HTML file under the output folder
-
-//Constructor classes are "models"
+app.init();
